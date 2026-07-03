@@ -1,0 +1,267 @@
+# Knowledge base of known DCM4CHEE Archive 5.x error signatures.
+# Each entry: id, title, signatures (case-insensitive regex), cause,
+# resolution (ordered steps), severity (critical|warning|info), references.
+entries:
+  - id: association-rejected-calling-aet
+    title: DICOM association rejected - calling AE title not recognized
+    signatures:
+      - 'calling.?AE.?title.?not.?recognized'
+      - 'Association rejected.*reason.*3'
+    severity: warning
+    cause: >-
+      The remote device (modality/workstation/PACS) opened an association with a
+      calling AE title that is not configured on the archive, or is not listed in
+      the archive AE's "Accepted Calling AE Titles". AE titles are case-sensitive,
+      so a mere case mismatch also triggers this.
+    resolution:
+      - Identify the remote calling AET from the log line.
+      - Add the remote device/AE in the archive UI (Configuration -> Devices -> new
+        Device/AE), or add its AET to the archive AE's Accepted Calling AE Titles
+        (dcmAcceptedCallingAETitle).
+      - Verify exact spelling and case of the AET on both sides.
+      - Reload the archive configuration (UI Control tab) and retry with echo_aet.
+
+  - id: association-rejected-called-aet
+    title: DICOM association rejected - called AE title not recognized
+    signatures:
+      - 'called.?AE.?title.?not.?recognized'
+      - 'Association rejected.*reason.*7'
+    severity: warning
+    cause: >-
+      The sender addressed the archive with a called AE title the archive does not
+      own - typically a typo, a renamed archive AE, or an AE that is configured but
+      not installed.
+    resolution:
+      - Check which AE titles the archive owns (list_aets tool / GET /aets).
+      - Correct the called AET ("destination AE") configured on the sending device.
+      - If the archive AE was intentionally renamed, update every sender that still
+        uses the old name.
+
+  - id: no-presentation-context
+    title: No acceptable presentation contexts (SOP class / transfer syntax refused)
+    signatures:
+      - 'no acceptable Presentation Contexts'
+    severity: warning
+    cause: >-
+      The association was accepted but every proposed presentation context was
+      rejected - the SOP class or transfer syntax offered by the sender is not among
+      the archive AE's accepted transfer capabilities.
+    resolution:
+      - Identify the SOP class / transfer syntax the sender proposes (sender log or
+        association log).
+      - Extend the Transfer Capabilities of the archive AE for that SOP class (or
+        configure wildcard transfer capabilities).
+      - Reload the configuration and retry the transfer.
+
+  - id: storage-out-of-space
+    title: Storage volume out of disk space
+    signatures:
+      - 'No space left on device'
+    severity: critical
+    cause: >-
+      The filesystem backing the storage system (e.g. /storage/fs1) is full, so new
+      objects cannot be written; C-STORE/STOW requests fail with out-of-resources
+      statuses.
+    resolution:
+      - Check free space with the get_storage_status tool (GET /storage) and on the
+        host (df -h on the storage volume).
+      - Free or expand the volume (grow the disk, prune old data per retention
+        policy).
+      - For CACHE storage, configure a deleterThreshold so the archive purges old
+        objects automatically before the disk fills up.
+      - Retry failed store/export tasks afterwards (retry_task).
+
+  - id: storage-permission
+    title: Storage path not writable (permissions)
+    signatures:
+      - 'AccessDeniedException'
+      - 'Permission denied.*storage'
+      - 'FileSystemException.*storage'
+    severity: critical
+    cause: >-
+      WildFly inside the dcm4chee-arc container runs as uid/gid 1023:1023. If the
+      host directory mounted as storage is not writable by that user, every write
+      fails.
+    resolution:
+      - 'chown -R 1023:1023 the host storage directory (e.g.
+        /var/local/dcm4chee-arc/storage).'
+      - Verify the volume mount in docker-compose maps the intended host path to
+        /storage.
+      - Retry the failed tasks once writable.
+
+  - id: db-connection-pool
+    title: Database connection pool exhausted / PacsDS unavailable
+    signatures:
+      - 'IJ000453'
+      - 'IJ000655'
+      - 'Unable to get managed connection for java:/PacsDS'
+    severity: critical
+    cause: >-
+      The archive could not obtain a JDBC connection to PostgreSQL: either the
+      database is down/unreachable, or the WildFly datasource pool (default max 50
+      connections) is exhausted under load.
+    resolution:
+      - Check the db container is running and healthy (docker ps, docker logs of the
+        PostgreSQL container).
+      - If load-related, raise WILDFLY_PACSDS_MAX_POOL_SIZE on the arc container AND
+        PostgreSQL max_connections together.
+      - Ensure start ordering with WILDFLY_WAIT_FOR=ldap:389 db:5432 so the archive
+        waits for the database.
+      - After recovery, retry FAILED tasks (get_failed_tasks / retry_task).
+
+  - id: db-down
+    title: PostgreSQL down or refusing connections
+    signatures:
+      - 'Connection refused.*5432'
+      - 'FATAL: too many clients already'
+      - 'could not connect to server'
+    severity: critical
+    cause: >-
+      The PostgreSQL container is not running, not yet accepting connections at
+      archive startup, or has hit its client connection limit.
+    resolution:
+      - Restart/inspect the db container; check its logs for crashes or disk-full.
+      - Use WILDFLY_WAIT_FOR so the archive starts only after the database listens.
+      - If "too many clients", raise PostgreSQL max_connections (and keep it above
+        the WildFly pool size).
+
+  - id: ldap-connection
+    title: LDAP (slapd) unreachable or credentials invalid
+    signatures:
+      - 'CommunicationException.*ldap'
+      - 'LDAP: error code 49'
+    severity: critical
+    cause: >-
+      The archive reads its whole device configuration from OpenLDAP. The slapd
+      container is down, or LDAP_URL / LDAP_ROOTPASS / base-DN environment variables
+      differ between the slapd and arc containers (error code 49 = invalid
+      credentials).
+    resolution:
+      - Check the ldap container is running; start it before the archive
+        (WILDFLY_WAIT_FOR=ldap:389 ...).
+      - Ensure LDAP_* environment variables are identical across the slapd and arc
+        (and keycloak, if secured) containers.
+      - Restart the arc container after LDAP is reachable again.
+
+  - id: keycloak-auth
+    title: Keycloak authentication/authorization failures
+    signatures:
+      - 'Failed to verify token'
+      - 'Invalid token issuer'
+      - 'Unable to authenticate the token'
+    severity: warning
+    cause: >-
+      On secured deployments, REST/UI requests carry Keycloak bearer tokens. Common
+      causes of verification failures are expired tokens (default lifetime 300 s),
+      clock skew between containers, or an issuer-URL mismatch (token issued for an
+      external hostname while the archive validates against the internal one).
+    resolution:
+      - Refresh/re-acquire the token; automate refresh for API clients.
+      - Mount /etc/localtime read-only into all containers so clocks agree.
+      - Align KC_HOSTNAME / issuer configuration so token issuer matches what the
+        archive expects.
+      - Verify the client's realm roles cover the endpoint (queue/monitor endpoints
+        need the admin role by default).
+
+  - id: hl7-error
+    title: HL7 message processing/sending failures
+    signatures:
+      - 'HL7Exception'
+      - 'Sending HL7 message failed'
+    severity: warning
+    cause: >-
+      An HL7 message was rejected or could not be delivered - unknown sending or
+      receiving application+facility, malformed message content, or the receiving
+      HL7 endpoint is down.
+    resolution:
+      - Inspect failed tasks in the HL7Send queue (list_queue_tasks HL7Send
+        status=FAILED) for the errorMessage/remote ACK.
+      - Configure the HL7 Application (application^facility) on the archive device
+        if it is unknown.
+      - Verify the receiver is reachable (host/port) and retry the tasks.
+
+  - id: export-task-failure
+    title: Export/forward task failures (destination unreachable)
+    signatures:
+      - 'UnknownHostException'
+      - 'AAssociateRJ'
+      - 'Failed to process'
+    severity: warning
+    cause: >-
+      Export, retrieve or forwarding tasks fail when the destination AE/host is
+      unreachable, DNS does not resolve, the destination rejects the association, or
+      the exporter is misconfigured.
+    resolution:
+      - Read the task errorMessage via get_failed_tasks / list_queue_tasks.
+      - Test connectivity to the destination with echo_aet (optionally overriding
+        host/port).
+      - Fix the exporter/destination configuration (hostname, port, AET).
+      - Reschedule the failed tasks with retry_task.
+
+  - id: out-of-memory
+    title: JVM out of memory
+    signatures:
+      - 'OutOfMemoryError'
+      - 'GC overhead limit exceeded'
+      - 'insufficient memory for the Java Runtime Environment'
+    severity: critical
+    cause: >-
+      The WildFly JVM heap is too small for the workload (very large studies, many
+      concurrent associations), or the Docker host itself is out of memory /
+      restricting resources, which can even prevent JVM startup ("Cannot create GC
+      thread").
+    resolution:
+      - Raise the heap via JAVA_OPTS (-Xmx) on the arc container.
+      - Increase Docker memory limits and ulimits (--ulimit nofile) / host RAM.
+      - Restart the container and monitor for recurrence; consider splitting
+        workload or limiting concurrent associations.
+
+  - id: transaction-timeout
+    title: JTA transaction timeout (ARJUNA)
+    signatures:
+      - 'ARJUNA012117'
+      - 'ARJUNA012095'
+    severity: warning
+    cause: >-
+      A long-running database operation (deleting a huge study, bulk update,
+      migration) exceeded WildFly's default 300 s transaction timeout and was rolled
+      back by the transaction reaper.
+    resolution:
+      - Increase the coordinator-environment default-timeout in standalone.xml (or
+        the corresponding WILDFLY env/CLI setting).
+      - Split very large operations into smaller batches.
+      - Retry the rolled-back operation afterwards.
+
+  - id: store-failure
+    title: C-STORE / STOW processing failure
+    signatures:
+      - 'Failed to store'
+      - 'DicomServiceException.*(A7\d\d|0110)'
+    severity: critical
+    cause: >-
+      The archive failed to persist a received object. DICOM status A7xx means "out
+      of resources" (usually storage full/unwritable), 0110 is a generic processing
+      failure (often a database error during the store). The root cause is in the
+      nested exception.
+    resolution:
+      - Read the nested exception in the log (diagnose_error on the stack trace).
+      - Check storage space/permissions (get_storage_status) and database health.
+      - Once fixed, ask the sender to resend, or retry related failed tasks.
+
+  - id: stgcmt-verification
+    title: Storage verification / commitment failures (missing or corrupt objects)
+    signatures:
+      - 'FAILED_TO_FETCH_OBJECT'
+      - 'DIFFERING_OBJECT_CHECKSUM'
+      - 'Failed to update Storage Commitment'
+    severity: critical
+    cause: >-
+      Storage verification found objects that are missing from the storage system or
+      whose checksum/size no longer matches the database record - data loss or
+      corruption on the storage volume.
+    resolution:
+      - Identify affected studies from the stgver task results (list_queue_tasks
+        StgVerTasks / GET /monitor/stgver).
+      - Check the storage volume health (filesystem errors, S3 bucket consistency).
+      - Restore objects from a second storage system or backup, then re-run storage
+        verification.
