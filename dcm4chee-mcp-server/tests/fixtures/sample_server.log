@@ -1,0 +1,20 @@
+2026-07-03 08:00:01,101 INFO  [org.jboss.as.server] (ServerService Thread Pool -- 46) WFLYSRV0010: Deployed "dcm4chee-arc-ear-5.33.1-psql.ear"
+2026-07-03 08:00:02,204 INFO  [org.dcm4chee.arc.conf.ldap] (MSC service thread 1-3) Loaded device dcm4chee-arc from LDAP
+2026-07-03 08:05:10,315 INFO  [org.dcm4che3.net.Association] (EE-ManagedExecutorService-default-Thread-2) DCM4CHEE<-MODALITY1(1): A-ASSOCIATE-RQ
+2026-07-03 08:05:10,420 INFO  [org.dcm4che3.net.Association] (EE-ManagedExecutorService-default-Thread-2) DCM4CHEE<-MODALITY1(1): received 12 objects
+2026-07-03 08:10:00,000 WARN  [org.dcm4che3.net.Association] (EE-ManagedExecutorService-default-Thread-4) Association rejected: result=2, source=1, reason=3 - calling-AE-title-not-recognized: UNKNOWN_AET
+2026-07-03 08:15:30,500 ERROR [org.dcm4chee.arc.store.impl.StoreServiceImpl] (EE-ManagedExecutorService-default-Thread-5) Failed to store received object CT.1.2.840.113619.2.55.3:
+java.io.IOException: No space left on device
+	at java.base/sun.nio.ch.FileDispatcherImpl.write0(Native Method)
+	at java.base/sun.nio.ch.FileDispatcherImpl.write(FileDispatcherImpl.java:62)
+	at org.dcm4chee.arc.storage.filesystem.FileSystemStorage.write(FileSystemStorage.java:181)
+	... 14 more
+2026-07-03 08:20:45,123 ERROR [org.jboss.jca.core.connectionmanager.pool] (default task-10) IJ000453: Unable to get managed connection for java:/PacsDS: javax.resource.ResourceException: IJ000655: No managed connections available within configured blocking timeout (30000 [ms])
+	at org.jboss.jca.core.connectionmanager.pool.AbstractPool.getSimpleConnection(AbstractPool.java:632)
+	at org.jboss.jca.core.connectionmanager.AbstractConnectionManager.getManagedConnection(AbstractConnectionManager.java:624)
+Caused by: javax.resource.ResourceException: IJ000655: No managed connections available within configured blocking timeout (30000 [ms])
+	at org.jboss.jca.core.connectionmanager.pool.mcp.SemaphoreConcurrentLinkedDequeManagedConnectionPool.getConnection(SemaphoreConcurrentLinkedDequeManagedConnectionPool.java:570)
+	... 30 more
+2026-07-03 08:21:00,001 INFO  [org.dcm4chee.arc.export.mgt] (EE-ManagedScheduledExecutorService-default-Thread-1) Scheduled 3 export tasks
+2026-07-03 08:25:00,900 WARN  [org.dcm4chee.arc.retrieve.scu] (EE-ManagedExecutorService-default-Thread-7) Failed to process retrieve task 812: java.net.UnknownHostException: remote-pacs.example.org
+2026-07-03 08:30:00,050 INFO  [org.dcm4che3.net.Association] (EE-ManagedExecutorService-default-Thread-8) DCM4CHEE->EXPORT_DEST(3): A-RELEASE-RQ
