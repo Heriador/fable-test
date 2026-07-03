@@ -33,11 +33,22 @@ the archive's REST API (`/dcm4chee-arc/...`, the
 Requires Python 3.10+ and network access to the archive's HTTP port (8080 by
 default).
 
+**Linux / macOS:**
+
 ```bash
 cd dcm4chee-mcp-server
 python3 -m venv .venv
 .venv/bin/pip install -e .
 cp .env.example .env   # then edit
+```
+
+**Windows** (note: venvs use `.venv\Scripts\`, not `.venv/bin/`):
+
+```bat
+cd dcm4chee-mcp-server
+python -m venv .venv
+.venv\Scripts\pip install -e .
+copy .env.example .env
 ```
 
 ### Configuration
@@ -95,6 +106,8 @@ claude mcp add dcm4chee -- /path/to/dcm4chee-mcp-server/.venv/bin/dcm4chee-mcp-s
 
 ### Claude Desktop (`claude_desktop_config.json`)
 
+Linux / macOS:
+
 ```json
 {
   "mcpServers": {
@@ -108,6 +121,30 @@ claude mcp add dcm4chee -- /path/to/dcm4chee-mcp-server/.venv/bin/dcm4chee-mcp-s
   }
 }
 ```
+
+Windows — launch via `python.exe -m` (there is no `.venv/bin/` on Windows; the
+executables live in `.venv\Scripts\`):
+
+```json
+{
+  "mcpServers": {
+    "dcm4chee": {
+      "command": "D:\\path\\to\\dcm4chee-mcp-server\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "dcm4chee_mcp.server"],
+      "env": {
+        "DCM4CHEE_BASE_URL": "http://localhost:8080/dcm4chee-arc",
+        "DCM4CHEE_DOCKER_CONTAINER": "dcm4chee-arc"
+      }
+    }
+  }
+}
+```
+
+With Docker Desktop on Windows, the `docker logs` fallback
+(`DCM4CHEE_DOCKER_CONTAINER`, container name from `docker ps`) is usually the
+easiest way to give the server log access; alternatively mount the WildFly
+volume to a Windows folder and set `DCM4CHEE_LOG_FILE_PATH` to its
+`log\server.log`.
 
 The server uses the stdio transport; nothing listens on the network.
 
